@@ -1,227 +1,180 @@
+"""
+QA Edge Case Generator - Multi-Page App Landing Page
+"""
 import streamlit as st
-import google.generativeai as genai
-import json
 
-# Page configuration
+# Page config
 st.set_page_config(
     page_title="QA Edge Case Generator",
-    page_icon="🔍",
-    layout="wide"
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Title
-st.title("🔍 QA Edge Case Generator")
-st.markdown("Generate comprehensive test scenarios for your features using AI")
-
-# Sample scenarios for demo mode
-DEMO_SCENARIOS = {
-    "Functional": [
-        "Test user login with valid credentials and verify successful authentication",
-        "Verify 'Remember Me' functionality persists login state across browser sessions",
-        "Test 'Forgot Password' link redirects to password recovery page",
-        "Verify login fails with incorrect password and displays appropriate error message",
-        "Test session timeout after 30 days when 'Remember Me' is enabled",
-        "Verify multiple failed login attempts trigger account lockout mechanism"
-    ],
-    "Security": [
-        "Test SQL injection attempts in email and password fields",
-        "Verify password is not visible in plain text or network requests",
-        "Test brute force attack prevention with rate limiting",
-        "Verify session tokens are properly encrypted and invalidated on logout",
-        "Test XSS (Cross-Site Scripting) vulnerabilities in input fields",
-        "Verify CSRF token validation for login form submission"
-    ],
-    "Input Validation": [
-        "Test login with empty email and password fields",
-        "Verify email format validation (invalid formats: no @, missing domain, etc.)",
-        "Test password field with special characters, emojis, and unicode",
-        "Verify maximum length limits for email and password fields",
-        "Test login with SQL/script injection payloads in input fields",
-        "Verify whitespace handling (leading/trailing spaces in credentials)"
-    ],
-    "Network": [
-        "Test login behavior when network connection is lost mid-request",
-        "Verify timeout handling for slow API responses (>30 seconds)",
-        "Test login with intermittent network connectivity",
-        "Verify proper error handling when authentication server is down",
-        "Test behavior with very slow network speeds (3G/Edge simulation)",
-        "Verify retry mechanism for failed network requests"
-    ]
+# Custom CSS
+st.markdown("""
+<style>
+.main-header {
+    font-size: 3rem;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 1rem;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
+.sub-header {
+    font-size: 1.5rem;
+    text-align: center;
+    color: #666;
+    margin-bottom: 3rem;
+}
+.feature-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    border-left: 4px solid #667eea;
+    transition: transform 0.2s;
+}
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+.feature-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+.feature-desc {
+    color: #666;
+    line-height: 1.6;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Initialize Gemini client
-@st.cache_resource
-def get_gemini_model():
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-2.5-pro')
-    except Exception as e:
-        return None
+# Header
+st.markdown('<div class="main-header">🤖 QA Edge Case Generator</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">AI 기반 QA 테스트 시나리오 생성 도구</div>', unsafe_allow_html=True)
 
-model = get_gemini_model()
+# Introduction
+st.markdown("---")
+col1, col2 = st.columns([2, 1])
 
-# Main input area
-st.markdown("### 기획 기능 설명 (Feature Description)")
-feature_description = st.text_area(
-    label="기획 기능 설명 (Feature Description)",
-    label_visibility="collapsed",
-    placeholder="Enter your feature description here...\n\nExample: A login form that accepts email and password, with a 'Remember Me' checkbox and 'Forgot Password' link.",
-    height=200
-)
-
-# Generate button
-if st.button("🚀 시나리오 생성 (Generate Scenarios)", type="primary", use_container_width=True):
-    if not feature_description.strip():
-        st.warning("Please enter a feature description first.")
-    elif not model:
-        # Demo mode - use sample scenarios
-        st.info("🎭 **Demo Mode**: Using sample test scenarios (Gemini API key not configured)")
-        st.markdown("*To use AI-powered generation, add your Gemini API key to `.streamlit/secrets.toml`*")
-        
-        with st.spinner("Loading demo scenarios..."):
-            import time
-            time.sleep(1)  # Simulate processing
-            
-            scenarios = DEMO_SCENARIOS
-            
-            # Display results
-            st.success("✅ Demo test scenarios loaded successfully!")
-            st.markdown("---")
-            
-            # Create columns for better layout
-            col1, col2 = st.columns(2)
-            
-            # Functional scenarios
-            with col1:
-                st.markdown("### 🎯 Functional")
-                for i, scenario in enumerate(scenarios.get("Functional", []), 1):
-                    st.markdown(f"{i}. {scenario}")
-                st.markdown("")
-            
-            # Security scenarios
-            with col2:
-                st.markdown("### 🔒 Security")
-                for i, scenario in enumerate(scenarios.get("Security", []), 1):
-                    st.markdown(f"{i}. {scenario}")
-                st.markdown("")
-            
-            # Input Validation scenarios
-            with col1:
-                st.markdown("### ✅ Input Validation")
-                for i, scenario in enumerate(scenarios.get("Input Validation", []), 1):
-                    st.markdown(f"{i}. {scenario}")
-                st.markdown("")
-            
-            # Network scenarios
-            with col2:
-                st.markdown("### 🌐 Network")
-                for i, scenario in enumerate(scenarios.get("Network", []), 1):
-                    st.markdown(f"{i}. {scenario}")
-    else:
-        # AI mode - use Gemini API
-        with st.spinner("Generating test scenarios with AI..."):
-            try:
-                # Create the prompt for Gemini
-                prompt = f"""You are a QA expert. Given the following feature description, generate comprehensive edge case test scenarios.
-
-Feature Description:
-{feature_description}
-
-Please generate test scenarios in the following 4 categories:
-1. Functional - Core functionality and business logic edge cases
-2. Security - Security vulnerabilities and attack vectors
-3. Input Validation - Invalid inputs, boundary conditions, data type issues
-4. Network - Network-related issues, timeouts, connectivity problems
-
-For each category, provide 5-7 specific test scenarios. Format your response as a JSON object with the following structure:
-{{
-    "Functional": ["scenario 1", "scenario 2", ...],
-    "Security": ["scenario 1", "scenario 2", ...],
-    "Input Validation": ["scenario 1", "scenario 2", ...],
-    "Network": ["scenario 1", "scenario 2", ...]
-}}
-
-Only return the JSON object, no additional text."""
-
-                # Call Gemini API
-                response = model.generate_content(prompt)
-                result_text = response.text.strip()
-                
-                # Remove markdown code blocks if present
-                if result_text.startswith("```json"):
-                    result_text = result_text[7:]
-                if result_text.startswith("```"):
-                    result_text = result_text[3:]
-                if result_text.endswith("```"):
-                    result_text = result_text[:-3]
-                result_text = result_text.strip()
-                
-                scenarios = json.loads(result_text)
-                
-                # Display results
-                st.success("✅ Test scenarios generated successfully!")
-                st.markdown("---")
-                
-                # Create columns for better layout
-                col1, col2 = st.columns(2)
-                
-                # Functional scenarios
-                with col1:
-                    st.markdown("### 🎯 Functional")
-                    for i, scenario in enumerate(scenarios.get("Functional", []), 1):
-                        st.markdown(f"{i}. {scenario}")
-                    st.markdown("")
-                
-                # Security scenarios
-                with col2:
-                    st.markdown("### 🔒 Security")
-                    for i, scenario in enumerate(scenarios.get("Security", []), 1):
-                        st.markdown(f"{i}. {scenario}")
-                    st.markdown("")
-                
-                # Input Validation scenarios
-                with col1:
-                    st.markdown("### ✅ Input Validation")
-                    for i, scenario in enumerate(scenarios.get("Input Validation", []), 1):
-                        st.markdown(f"{i}. {scenario}")
-                    st.markdown("")
-                
-                # Network scenarios
-                with col2:
-                    st.markdown("### 🌐 Network")
-                    for i, scenario in enumerate(scenarios.get("Network", []), 1):
-                        st.markdown(f"{i}. {scenario}")
-                
-            except json.JSONDecodeError as e:
-                st.error(f"Error parsing API response: {e}")
-                st.code(result_text)
-            except Exception as e:
-                st.error(f"Error generating scenarios: {e}")
-                st.info("Please check your API key and try again.")
-
-# Sidebar with instructions
-with st.sidebar:
-    st.markdown("## 📖 How to Use")
+with col1:
     st.markdown("""
-    1. Enter your feature description in the text area
-    2. Click the 'Generate Scenarios' button
-    3. Review the generated test scenarios across 4 categories
+    ### 👋 환영합니다!
     
-    **Categories:**
-    - 🎯 **Functional**: Core functionality tests
-    - 🔒 **Security**: Security vulnerability tests
-    - ✅ **Input Validation**: Data validation tests
-    - 🌐 **Network**: Network-related tests
+    QA Edge Case Generator는 Google Gemini AI를 활용하여 개발자들이 놓치기 쉬운 
+    엣지 케이스를 자동으로 찾아내는 도구입니다.
+    
+    **주요 기능:**
+    - 🎯 AI 기반 테스트 시나리오 자동 생성
+    - 📋 Jira 스타일 칸반 보드
+    - 🔗 Webhook API 지원
+    - ☑️ 인터랙티브 체크리스트
     """)
-    
-    st.markdown("---")
-    st.markdown("### ⚙️ Configuration")
-    if model:
-        st.markdown("🤖 **Mode**: AI-Powered (Gemini Pro)")
-        st.markdown("API Key: ✅ Configured")
-    else:
-        st.markdown("🎭 **Mode**: Demo Mode")
-        st.markdown("API Key: ❌ Not configured")
-        st.info("App works in demo mode with sample scenarios. Configure API key for AI-powered generation.")
 
+with col2:
+    st.info("""
+    **💡 시작하기**
+    
+    왼쪽 사이드바에서 원하는 
+    페이지를 선택하세요!
+    """)
+
+st.markdown("---")
+
+# Feature cards
+st.markdown("### 📱 사용 가능한 기능")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("""
+    <div class="feature-card">
+        <div class="feature-title">🎯 QA Generator</div>
+        <div class="feature-desc">
+            기능 설명을 입력하면 AI가 4가지 카테고리(Functional, Security, 
+            Input Validation, Network)로 분류된 테스트 시나리오를 생성합니다.
+            <br><br>
+            <strong>특징:</strong>
+            <ul>
+                <li>심각도별 색상 뱃지 (High/Medium/Low)</li>
+                <li>접을 수 있는 카테고리</li>
+                <li>체크박스로 진행 상황 추적</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown("""
+    <div class="feature-card">
+        <div class="feature-title">📋 Kanban Board</div>
+        <div class="feature-desc">
+            Jira 스타일의 칸반 보드에서 티켓을 관리하고, 
+            "진행 중"으로 이동하면 자동으로 AI가 엣지 케이스를 분석합니다.
+            <br><br>
+            <strong>특징:</strong>
+            <ul>
+                <li>Jira 스타일 카드 디자인</li>
+                <li>드래그 없이 버튼으로 이동</li>
+                <li>자동 AI 분석 트리거</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Quick start guide
+st.markdown("### 🚀 빠른 시작 가이드")
+
+tab1, tab2 = st.tabs(["QA Generator 사용법", "Kanban Board 사용법"])
+
+with tab1:
+    st.markdown("""
+    1. 왼쪽 사이드바에서 **🎯 QA Generator** 선택
+    2. 텍스트 영역에 기능 설명 입력
+    3. **시나리오 생성** 버튼 클릭
+    4. 생성된 테스트 케이스 확인 및 체크
+    """)
+
+with tab2:
+    st.markdown("""
+    1. 왼쪽 사이드바에서 **📋 Kanban Board** 선택
+    2. "할 일" 컬럼의 티켓 확인
+    3. **진행 중으로 이동** 버튼 클릭
+    4. AI가 자동으로 엣지 케이스 분석
+    5. 카드 아래 댓글로 결과 확인
+    """)
+
+st.markdown("---")
+
+# Footer
+st.markdown("""
+<div style="text-align: center; color: #999; padding: 2rem;">
+    <p>Powered by Google Gemini 2.5 Pro | Made with Streamlit</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.markdown("## 📖 도움말")
+    st.markdown("""
+    ### API 설정
+    `.streamlit/secrets.toml` 파일에 
+    Gemini API 키를 설정하세요.
+    
+    ### Flask API
+    Flask 서버를 실행하면 
+    `/webhook` 엔드포인트로 
+    프로그래밍 방식 접근이 가능합니다.
+    
+    ```bash
+    python flask_app.py
+    ```
+    """)
