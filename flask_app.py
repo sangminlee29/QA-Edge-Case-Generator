@@ -4,20 +4,15 @@ Provides webhook endpoint for generating QA test case checklists.
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import google.generativeai as genai
-from config import get_gemini_api_key
+from config import get_ai_model, get_generation_config
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Initialize Gemini API
-api_key = get_gemini_api_key()
-if api_key:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-pro')
-else:
-    model = None
-    print("Warning: Gemini API key not found. Server will return errors for webhook requests.")
+# Initialize AI Model (supports both Gemini API Key and Vertex AI)
+model = get_ai_model()
+if not model:
+    print("Warning: AI API not configured. Server will return errors for webhook requests.")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -51,9 +46,9 @@ def webhook():
     if not description:
         return jsonify({"error": "Missing required field: description"}), 400
     
-    # Check if Gemini API is available
+    # Check if AI model is available
     if not model:
-        return jsonify({"error": "Gemini API key not configured"}), 500
+        return jsonify({"error": "AI API not configured"}), 500
     
     try:
         # Create prompt for Gemini
@@ -92,8 +87,9 @@ Feature Description:
 
 마크다운 텍스트만 반환하라. 추가 설명 없이."""
 
-        # Call Gemini API
-        response = model.generate_content(prompt)
+        # Call AI API
+        generation_config = get_generation_config(temperature=0.7)
+        response = model.generate_content(prompt, generation_config=generation_config)
         result_text = response.text.strip()
         
         # Return result
@@ -107,12 +103,12 @@ def health():
     """Health check endpoint."""
     return jsonify({
         "status": "healthy",
-        "gemini_api_configured": model is not None
+        "ai_api_configured": model is not None
     }), 200
 
 if __name__ == '__main__':
     print("🚀 Starting Flask server...")
-    print(f"📡 Gemini API: {'✅ Configured' if model else '❌ Not configured'}")
+    print(f"📡 AI API: {'✅ Configured' if model else '❌ Not configured'}")
     print("🔗 Endpoints:")
     print("   - POST /webhook - Generate QA checklist")
     print("   - GET  /health  - Health check")

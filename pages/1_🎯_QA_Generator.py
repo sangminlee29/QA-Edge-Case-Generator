@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from config import get_ai_model
 import json
 
 # Page configuration
@@ -130,17 +130,12 @@ DEMO_SCENARIOS = {
     ]
 }
 
-# Initialize Gemini client
+# Initialize AI Model (supports both Gemini API Key and Vertex AI)
 @st.cache_resource
-def get_gemini_model():
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-2.5-pro')
-    except Exception as e:
-        return None
+def get_ai_model_cached():
+    return get_ai_model()
 
-model = get_gemini_model()
+model = get_ai_model_cached()
 
 # Main input area
 st.markdown("### 기획 기능 설명 (Feature Description)")
@@ -157,8 +152,8 @@ if st.button("🚀 시나리오 생성 (Generate Scenarios)", type="primary", us
         st.warning("Please enter a feature description first.")
     elif not model:
         # Demo mode - use sample scenarios
-        st.info("🎭 **Demo Mode**: Using sample test scenarios (Gemini API key not configured)")
-        st.markdown("*To use AI-powered generation, add your Gemini API key to `.streamlit/secrets.toml`*")
+        st.info("🎭 **Demo Mode**: Using sample test scenarios (AI API not configured)")
+        st.markdown("*To use AI-powered generation, configure your API in `.streamlit/secrets.toml`*")
         
         with st.spinner("Loading demo scenarios..."):
             import time

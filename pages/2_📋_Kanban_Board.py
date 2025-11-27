@@ -3,8 +3,7 @@ Jira-Style Kanban Board
 AI-powered QA edge case analysis when tickets move to "In Progress"
 """
 import streamlit as st
-import google.generativeai as genai
-from config import get_gemini_api_key
+from config import get_ai_model, get_generation_config
 import textwrap
 import json
 
@@ -15,16 +14,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize Gemini API
+# Initialize AI Model (supports both Gemini API Key and Vertex AI)
 @st.cache_resource
-def get_gemini_model():
-    api_key = get_gemini_api_key()
-    if api_key:
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-2.5-pro')
-    return None
+def get_ai_model_cached():
+    return get_ai_model()
 
-model = get_gemini_model()
+model = get_ai_model_cached()
 
 # Jira-style CSS
 st.markdown("""
@@ -205,11 +200,51 @@ def analyze_ticket(card):
 
     try:
         # Configure for JSON response
-        generation_config = genai.GenerationConfig(response_mime_type="application/json")
+        generation_config = get_generation_config(response_mime_type="application/json")
         response = model.generate_content(prompt, generation_config=generation_config)
         return response.text.strip()
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+# Function to generate next ticket ID
+def generate_ticket_id():
+    """Generate next ticket ID based on existing tickets"""
+    existing_ids = [card['id'] for card in st.session_state.cards]
+    
+    # Extract numbers from existing IDs (e.g., "PROJ-101" -> 101)
+    numbers = []
+    for ticket_id in existing_ids:
+        try:
+            # Try to extract number from format like "PROJ-101"
+            if '-' in ticket_id:
+                num = int(ticket_id.split('-')[-1])
+                numbers.append(num)
+        except ValueError:
+            continue
+    
+    # Generate next number
+    if numbers:
+        next_num = max(numbers) + 1
+    else:
+        next_num = 101  # Start from 101 if no existing tickets
+    
+    return f"PROJ-{next_num}"
+
+# Function to add new card
+def add_card(summary, description):
+    """Add a new card to the To Do list with auto-generated ID"""
+    ticket_id = generate_ticket_id()
+    
+    new_card = {
+        "id": ticket_id,
+        "summary": summary,
+        "description": description,
+        "status": "To Do",
+        "edge_cases": None
+    }
+    # Insert at the beginning of the list to show at the top
+    st.session_state.cards.insert(0, new_card)
+    return True, f"티켓 '{ticket_id}'가 추가되었습니다."
 
 # Function to move card
 def move_card(card_id, new_status):
@@ -230,6 +265,31 @@ def move_card(card_id, new_status):
 # Header
 st.title("📋 Kanban Board")
 st.markdown("*Jira 스타일 칸반 보드 - 티켓을 '진행 중'으로 이동하면 AI가 자동으로 엣지 케이스를 분석합니다*")
+
+# Add new ticket form
+with st.expander("➕ 새 티켓 추가", expanded=False):
+    with st.form("add_ticket_form", clear_on_submit=True):
+        ticket_summary = st.text_input("요약", placeholder="예: 사용자 프로필 수정 기능", help="티켓의 간단한 요약을 입력하세요")
+        
+        ticket_description = st.text_area("설명", placeholder="상세한 설명을 입력하세요...", height=100, help="티켓의 상세한 설명을 입력하세요")
+        
+        col_btn1, col_btn2 = st.columns([1, 5])
+        with col_btn1:
+            submitted = st.form_submit_button("추가", type="primary", use_container_width=True)
+        
+        if submitted:
+            if not ticket_summary.strip():
+                st.error("요약을 입력하세요.")
+            elif not ticket_description.strip():
+                st.error("설명을 입력하세요.")
+            else:
+                success, message = add_card(ticket_summary.strip(), ticket_description.strip())
+                if success:
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
+
 st.markdown("---")
 
 # Kanban columns
