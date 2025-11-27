@@ -1,6 +1,8 @@
 # Streamlit secrets (contains API keys)
 .streamlit/secrets.toml
 
+service_account.json
+
 # Python
 __pycache__/
 *.py[cod]
