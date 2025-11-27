@@ -1,6 +1,7 @@
 import streamlit as st
 from config import get_ai_model
 import json
+import requests
 
 # Page configuration
 st.set_page_config(
@@ -138,18 +139,73 @@ def get_ai_model_cached():
 model = get_ai_model_cached()
 
 # Main input area
-st.markdown("### 기획 기능 설명 (Feature Description)")
-feature_description = st.text_area(
-    label="기획 기능 설명 (Feature Description)",
-    label_visibility="collapsed",
-    placeholder="Enter your feature description here...\n\nExample: A login form that accepts email and password, with a 'Remember Me' checkbox and 'Forgot Password' link.",
-    height=200
+input_method = st.radio(
+    "Select Input Method",
+    ["Feature Description", "Swagger URL"],
+    horizontal=True
 )
+
+feature_description = ""
+swagger_content = ""
+selected_endpoints = []
+
+if input_method == "Feature Description":
+    st.markdown("### 기획 기능 설명 (Feature Description)")
+    feature_description = st.text_area(
+        label="기획 기능 설명 (Feature Description)",
+        label_visibility="collapsed",
+        placeholder="Enter your feature description here...\n\nExample: A login form that accepts email and password, with a 'Remember Me' checkbox and 'Forgot Password' link.",
+        height=200
+    )
+else:
+    st.markdown("### Swagger URL")
+    swagger_url = st.text_input(
+        label="Swagger URL",
+        placeholder="Enter Swagger JSON URL (e.g., https://petstore.swagger.io/v2/swagger.json)"
+    )
+    
+    if swagger_url:
+        try:
+            with st.spinner("Fetching Swagger definition..."):
+                response = requests.get(swagger_url)
+                response.raise_for_status()
+                swagger_data = response.json()
+                
+                # Parse Swagger to extract relevant info
+                info = swagger_data.get('info', {})
+                paths = swagger_data.get('paths', {})
+                
+                swagger_summary = f"API Title: {info.get('title', 'Unknown')}\nDescription: {info.get('description', '')}\n\nEndpoints:\n"
+                
+                all_endpoints = []
+                for path, methods in paths.items():
+                    for method, details in methods.items():
+                        endpoint_str = f"{method.upper()} {path}"
+                        all_endpoints.append(endpoint_str)
+                        swagger_summary += f"- {endpoint_str}: {details.get('summary', '')}\n"
+                
+                swagger_content = swagger_summary
+                st.success("✅ Swagger definition loaded successfully!")
+                
+                # Endpoint selection
+                selected_endpoints = st.multiselect(
+                    "Select Endpoints to Generate Tests For",
+                    options=all_endpoints,
+                    default=all_endpoints[:5] if len(all_endpoints) > 5 else all_endpoints
+                )
+                
+                with st.expander("View Parsed Swagger Content"):
+                    st.text(swagger_content)
+                    
+        except Exception as e:
+            st.error(f"Error fetching Swagger: {str(e)}")
 
 # Generate button
 if st.button("🚀 시나리오 생성 (Generate Scenarios)", type="primary", use_container_width=True):
-    if not feature_description.strip():
+    if input_method == "Feature Description" and not feature_description.strip():
         st.warning("Please enter a feature description first.")
+    elif input_method == "Swagger URL" and not swagger_content:
+        st.warning("Please enter a valid Swagger URL and ensure content is loaded.")
     elif not model:
         # Demo mode - use sample scenarios
         st.info("🎭 **Demo Mode**: Using sample test scenarios (AI API not configured)")
@@ -167,50 +223,58 @@ if st.button("🚀 시나리오 생성 (Generate Scenarios)", type="primary", us
         # AI mode - use Gemini API
         with st.spinner("Generating test scenarios with AI..."):
             try:
-                # Create the enhanced prompt for Gemini with strong persona
-                prompt = f"""너는 구글 출신의 20년 차 시니어 QA 엔지니어다. 개발자들이 흔히 놓치는 사소하지만 치명적인 엣지 케이스(Edge Case)를 찾아내는 것이 목표다.
+                if input_method == "Swagger URL":
+                    # Swagger Prompt
+                    prompt = f"""너는 구글 출신의 20년 차 시니어 QA 엔지니어다.
+Feature Description / Swagger Content:
+{swagger_content}
 
-당신의 전문성:
-- 20년간 수천 개의 프로덕션 버그를 분석한 경험
-- 사용자들이 예상치 못한 방식으로 시스템을 사용하는 패턴 파악
-- 경계 조건, 동시성 문제, 보안 취약점을 찾아내는 능력
-- 단순한 테스트가 아닌, 실제로 프로덕션에서 발생할 수 있는 치명적인 시나리오 발굴
+Selected Endpoints:
+{', '.join(selected_endpoints)}
 
+위 선택된 엔드포인트들에 대해 각각 다음 4가지 카테고리의 엣지 케이스 테스트 시나리오를 생성하라:
+1. Functional
+2. Security
+3. Input Validation
+4. Network
+
+응답은 반드시 다음 JSON 형식으로만 출력하라:
+{{
+    "ENDPOINT_NAME (e.g., GET /users)": {{
+        "Functional": [
+            {{"title": "...", "description": "...", "severity": "High"}},
+            ...
+        ],
+        "Security": [...],
+        "Input Validation": [...],
+        "Network": [...]
+    }},
+    ...
+}}
+"""
+                else:
+                    # Standard Prompt
+                    prompt = f"""너는 구글 출신의 20년 차 시니어 QA 엔지니어다.
 Feature Description:
 {feature_description}
 
 다음 4가지 카테고리에서 각각 5-7개의 엣지 케이스 테스트 시나리오를 생성하라:
-1. Functional - 핵심 기능과 비즈니스 로직의 엣지 케이스
-2. Security - 보안 취약점과 공격 벡터
-3. Input Validation - 잘못된 입력, 경계 조건, 데이터 타입 이슈
-4. Network - 네트워크 관련 문제, 타임아웃, 연결 문제
+1. Functional
+2. Security
+3. Input Validation
+4. Network
 
-각 시나리오는 다음 형식으로 작성:
-- title: 간결한 테스트 케이스 제목 (한 줄)
-- description: 구체적인 테스트 방법과 예상 결과 (2-3문장)
-- severity: "High" (치명적), "Medium" (중요), "Low" (경미) 중 하나
-
-응답은 반드시 다음 JSON 형식으로만 출력하라 (다른 텍스트 없이):
+응답은 반드시 다음 JSON 형식으로만 출력하라:
 {{
     "Functional": [
         {{"title": "...", "description": "...", "severity": "High"}},
         ...
     ],
-    "Security": [
-        {{"title": "...", "description": "...", "severity": "High"}},
-        ...
-    ],
-    "Input Validation": [
-        {{"title": "...", "description": "...", "severity": "Medium"}},
-        ...
-    ],
-    "Network": [
-        {{"title": "...", "description": "...", "severity": "Medium"}},
-        ...
-    ]
+    "Security": [...],
+    "Input Validation": [...],
+    "Network": [...]
 }}
-
-JSON 객체만 반환하라. 추가 설명이나 마크다운 코드 블록 없이."""
+"""
 
                 # Call Gemini API
                 response = model.generate_content(prompt)
@@ -340,28 +404,59 @@ if st.session_state.get('scenarios_loaded', False):
         ("Network", "🌐", "네트워크 관련 문제, 타임아웃, 연결 문제")
     ]
     
-    for category_name, emoji, description in categories:
-        category_scenarios = scenarios.get(category_name, [])
-        if category_scenarios:
-            high, medium, low = count_by_severity(category_scenarios)
-            
-            # Create expander with count badges
-            badge_html = ""
-            if high > 0:
-                badge_html += f' <span class="severity-high">{high} High</span>'
-            if medium > 0:
-                badge_html += f' <span class="severity-medium">{medium} Medium</span>'
-            if low > 0:
-                badge_html += f' <span class="severity-low">{low} Low</span>'
-            
-            with st.expander(f"{emoji} **{category_name}** ({len(category_scenarios)} scenarios)", expanded=True):
-                st.markdown(f"*{description}*")
-                if badge_html:
-                    st.markdown(badge_html, unsafe_allow_html=True)
-                st.markdown("---")
+    # Check if scenarios are grouped by endpoint (Swagger mode)
+    is_grouped = any(key not in [c[0] for c in categories] for key in scenarios.keys())
+    
+    if is_grouped:
+        for endpoint, endpoint_scenarios in scenarios.items():
+            st.markdown(f"### 🔌 {endpoint}")
+            for category_name, emoji, description in categories:
+                category_scenarios = endpoint_scenarios.get(category_name, [])
+                if category_scenarios:
+                    high, medium, low = count_by_severity(category_scenarios)
+                    
+                    # Create expander with count badges
+                    badge_html = ""
+                    if high > 0:
+                        badge_html += f' <span class="severity-high">{high} High</span>'
+                    if medium > 0:
+                        badge_html += f' <span class="severity-medium">{medium} Medium</span>'
+                    if low > 0:
+                        badge_html += f' <span class="severity-low">{low} Low</span>'
+                    
+                    with st.expander(f"{emoji} **{category_name}** ({len(category_scenarios)} scenarios)", expanded=False):
+                        st.markdown(f"*{description}*")
+                        if badge_html:
+                            st.markdown(badge_html, unsafe_allow_html=True)
+                        st.markdown("---")
+                        
+                        for i, scenario in enumerate(category_scenarios, 1):
+                            display_scenario_interactive(scenario, f"{endpoint}_{category_name}", i)
+            st.markdown("---")
+    else:
+        # Standard display (Feature Description mode)
+        for category_name, emoji, description in categories:
+            category_scenarios = scenarios.get(category_name, [])
+            if category_scenarios:
+                high, medium, low = count_by_severity(category_scenarios)
                 
-                for i, scenario in enumerate(category_scenarios, 1):
-                    display_scenario_interactive(scenario, category_name, i)
+                # Create expander with count badges
+                badge_html = ""
+                if high > 0:
+                    badge_html += f' <span class="severity-high">{high} High</span>'
+                if medium > 0:
+                    badge_html += f' <span class="severity-medium">{medium} Medium</span>'
+                if low > 0:
+                    badge_html += f' <span class="severity-low">{low} Low</span>'
+                
+                with st.expander(f"{emoji} **{category_name}** ({len(category_scenarios)} scenarios)", expanded=True):
+                    st.markdown(f"*{description}*")
+                    if badge_html:
+                        st.markdown(badge_html, unsafe_allow_html=True)
+                    st.markdown("---")
+                    
+                    for i, scenario in enumerate(category_scenarios, 1):
+                        display_scenario_interactive(scenario, category_name, i)
 
 # Sidebar with instructions
 with st.sidebar:
